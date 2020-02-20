@@ -182,7 +182,10 @@ public class SymbolUtilsTest {
   public void class_inheriting_from_imported_symbol() {
     FileInput fileInput = parseWithoutSymbols(
       "from mod import A",
+      "import mod2",
       "class C(A): ",
+      "  pass",
+      "class D(mod2.B):",
       "  pass");
 
     Set<Symbol> globalSymbols = globalSymbols(fileInput, "mod", pythonFile("mod.py"));
@@ -190,7 +193,13 @@ public class SymbolUtilsTest {
     Symbol cSymbol = symbols.get("C");
     assertThat(cSymbol.name()).isEqualTo("C");
     assertThat(cSymbol.kind()).isEqualTo(Symbol.Kind.CLASS);
-    assertThat(((ClassSymbol) cSymbol).superClasses()).hasSize(0);
+    assertThat(((ClassSymbol) cSymbol).superClasses()).hasSize(1);
+    assertThat(((ClassSymbol) cSymbol).superClasses().get(0).fullyQualifiedName()).isEqualTo("mod.A");
+    Symbol dSymbol = symbols.get("D");
+    assertThat(dSymbol.name()).isEqualTo("D");
+    assertThat(dSymbol.kind()).isEqualTo(Symbol.Kind.CLASS);
+    assertThat(((ClassSymbol) dSymbol).superClasses()).hasSize(1);
+    assertThat(((ClassSymbol) dSymbol).superClasses().get(0).fullyQualifiedName()).isEqualTo("mod2.B");
   }
 
   @Test

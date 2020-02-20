@@ -22,24 +22,30 @@ package org.sonar.python.semantic;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import org.sonar.plugins.python.api.PythonFile;
 import org.sonar.plugins.python.api.symbols.Symbol;
+import org.sonar.plugins.python.api.tree.AliasedName;
 import org.sonar.plugins.python.api.tree.AnnotatedAssignment;
 import org.sonar.plugins.python.api.tree.ArgList;
 import org.sonar.plugins.python.api.tree.Argument;
 import org.sonar.plugins.python.api.tree.AssignmentStatement;
 import org.sonar.plugins.python.api.tree.BaseTreeVisitor;
 import org.sonar.plugins.python.api.tree.ClassDef;
+import org.sonar.plugins.python.api.tree.DottedName;
 import org.sonar.plugins.python.api.tree.Expression;
 import org.sonar.plugins.python.api.tree.FileInput;
 import org.sonar.plugins.python.api.tree.FunctionDef;
 import org.sonar.plugins.python.api.tree.HasSymbol;
+import org.sonar.plugins.python.api.tree.ImportFrom;
+import org.sonar.plugins.python.api.tree.ImportName;
 import org.sonar.plugins.python.api.tree.Name;
 import org.sonar.plugins.python.api.tree.RegularArgument;
+import org.sonar.plugins.python.api.tree.Token;
 import org.sonar.plugins.python.api.tree.Tree;
 import org.sonar.plugins.python.api.tree.Tree.Kind;
 
@@ -54,13 +60,14 @@ public class ProjectLevelSymbolVisitor {
     GlobalSymbolsBindingVisitor globalSymbolsBindingVisitor = new GlobalSymbolsBindingVisitor(fullyQualifiedModuleName, pythonFile);
     fileInput.accept(globalSymbolsBindingVisitor);
     BuiltinSymbols.all().forEach(b -> globalSymbolsBindingVisitor.symbolsByName.putIfAbsent(b, new SymbolImpl(b, b)));
-    GlobalSymbolsReadVisitor globalSymbolsReadVisitor = new GlobalSymbolsReadVisitor(globalSymbolsBindingVisitor.symbolsByName);
+    GlobalSymbolsReadVisitor globalSymbolsReadVisitor = new GlobalSymbolsReadVisitor(globalSymbolsBindingVisitor.symbolsByName, globalSymbolsBindingVisitor.importedSymbols);
     fileInput.accept(globalSymbolsReadVisitor);
     return globalSymbolsReadVisitor.symbolsByName.values().stream().filter(v -> !BuiltinSymbols.all().contains(v.fullyQualifiedName())).collect(Collectors.toSet());
   }
 
   private static class GlobalSymbolsBindingVisitor extends BaseTreeVisitor {
     private Map<String, Symbol> symbolsByName = new HashMap<>();
+    private Map<String, Symbol> importedSymbols = new HashMap<>();
     private String fullyQualifiedModuleName;
     private final PythonFile pythonFile;
 
@@ -117,22 +124,55 @@ public class ProjectLevelSymbolVisitor {
       }
       super.visitAnnotatedAssignment(annotatedAssignment);
     }
+
+    @Override
+    public void visitImportFrom(ImportFrom importFrom) {
+      DottedName moduleTree = importFrom.module();
+      String moduleName = moduleTree != null
+        ? moduleTree.names().stream().map(Name::name).collect(Collectors.joining("."))
+        : null;
+      if (!importFrom.isWildcardImport()) {
+        createImportedNames(importFrom.importedNames(), moduleName, importFrom.dottedPrefixForModule());
+      }
+    }
+
+    @Override
+    public void visitImportName(ImportName importName) {
+      createImportedNames(importName.modules(), null, Collections.emptyList());
+    }
+
+    private void createImportedNames(List<AliasedName> importedNames, @Nullable String fromModuleName, List<Token> dottedPrefix) {
+      importedNames.forEach(importedName -> {
+        Name nameTree = importedName.dottedName().names().get(0);
+        String fullyQualifiedName = fromModuleName != null
+          ? (fromModuleName + "." + nameTree.name())
+          : nameTree.name();
+        if (!dottedPrefix.isEmpty()) {
+          return;
+        }
+        Name alias = importedName.alias();
+        String symbolName = alias == null ? nameTree.name() : alias.name();
+        importedSymbols.put(symbolName, new SymbolImpl(symbolName, fullyQualifiedName));
+      });
+    }
   }
 
   private static class GlobalSymbolsReadVisitor extends BaseTreeVisitor {
     private Map<String, Symbol> symbolsByName;
+    private Map<String, Symbol> importedSymbols;
 
-    GlobalSymbolsReadVisitor(Map<String, Symbol> symbolsByName) {
+    GlobalSymbolsReadVisitor(Map<String, Symbol> symbolsByName, Map<String, Symbol> importedSymbols) {
       this.symbolsByName = symbolsByName;
+      this.importedSymbols = importedSymbols;
     }
 
     @Override
     public void visitClassDef(ClassDef classDef) {
-      resolveTypeHierarchy(classDef, symbolsByName.get(classDef.name().name()), symbolsByName);
+      resolveTypeHierarchy(classDef, symbolsByName.get(classDef.name().name()), symbolsByName, importedSymbols);
     }
   }
 
-  private static void resolveTypeHierarchy(ClassDef classDef, @Nullable Symbol symbol, Map<String, Symbol> symbolsByName) {
+  private static void resolveTypeHierarchy(ClassDef classDef, @Nullable Symbol symbol, Map<String, Symbol> symbolsByName, Map<String, Symbol> importedSymbols) {
     if (symbol == null || !Symbol.Kind.CLASS.equals(symbol.kind())) {
       return;
     }
@@ -150,7 +190,11 @@ public class ProjectLevelSymbolVisitor {
       Expression expression = ((RegularArgument) argument).expression();
       Symbol argumentSymbol = ((HasSymbol) expression).symbol();
       if (argumentSymbol == null && expression.is(Kind.NAME)) {
-        argumentSymbol = symbolsByName.get(((Name) expression).name());
+        String name = ((Name) expression).name();
+        argumentSymbol = symbolsByName.get(name);
+        if (argumentSymbol == null) {
+          argumentSymbol = importedSymbols.get(name);
+        }
       }
       if (argumentSymbol == null) {
         classSymbol.setHasUnresolvedTypeHierarchy(true);
@@ -162,13 +206,12 @@ public class ProjectLevelSymbolVisitor {
       }
       if (!Symbol.Kind.CLASS.equals(argumentSymbol.kind())) {
         classSymbol.setHasUnresolvedTypeHierarchy(true);
-        return;
       }
       classSymbol.addSuperClass(argumentSymbol);
     }
   }
 
   static void resolveTypeHierarchy(ClassDef classDef, @Nullable Symbol symbol) {
-    resolveTypeHierarchy(classDef, symbol, Collections.emptyMap());
+    resolveTypeHierarchy(classDef, symbol, Collections.emptyMap(), Collections.emptyMap());
   }
 }

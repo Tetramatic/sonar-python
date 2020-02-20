@@ -44,4 +44,6 @@ def raise_ChildOfActualException():
   raise ChildOfActualException() # OK
 
 def full_type_hierarchy_on_multiple_files():
-  raise incorrectExceptionTypeImported2.Dog() # FN
+  from incorrectExceptionTypeImported2 import Dog
+  raise Dog() # Noncompliant
+  raise incorrectExceptionTypeImported2.Dog() # Noncompliant
