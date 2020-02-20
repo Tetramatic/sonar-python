@@ -83,8 +83,8 @@ import org.sonar.python.tree.LambdaExpressionImpl;
 import org.sonar.python.types.TypeInference;
 import org.sonar.python.types.TypeShedVisitor;
 
+import static org.sonar.python.semantic.ProjectLevelSymbolVisitor.resolveTypeHierarchy;
 import static org.sonar.python.semantic.SymbolUtils.boundNamesFromExpression;
-import static org.sonar.python.semantic.SymbolUtils.resolveTypeHierarchy;
 
 // SymbolTable based on https://docs.python.org/3/reference/executionmodel.html#naming-and-binding
 public class SymbolTableBuilder extends BaseTreeVisitor {

@@ -42,3 +42,6 @@ def raise_RedefinedBaseExceptionChild():
 
 def raise_ChildOfActualException():
   raise ChildOfActualException() # OK
+
+def full_type_hierarchy_on_multiple_files():
+  raise incorrectExceptionTypeImported2.Dog() # FN

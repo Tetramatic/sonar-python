@@ -58,6 +58,7 @@ import org.sonar.python.SubscriptionVisitor;
 import org.sonar.python.metrics.FileLinesVisitor;
 import org.sonar.python.metrics.FileMetrics;
 import org.sonar.python.parser.PythonParser;
+import org.sonar.python.semantic.ProjectLevelSymbolVisitor;
 import org.sonar.python.semantic.SymbolUtils;
 import org.sonar.python.tree.PythonTreeMaker;
 
@@ -263,7 +264,7 @@ public class PythonScanner extends Scanner {
       packageNames.put(inputFile, packageName);
       String fullyQualifiedModuleName = SymbolUtils.fullyQualifiedModuleName(packageName, inputFile.filename());
       PythonFile pythonFile = SonarQubePythonFile.create(inputFile);
-      globalSymbolsByModuleName.put(fullyQualifiedModuleName, SymbolUtils.globalSymbols(astRoot, fullyQualifiedModuleName, pythonFile));
+      globalSymbolsByModuleName.put(fullyQualifiedModuleName, ProjectLevelSymbolVisitor.globalSymbols(astRoot, fullyQualifiedModuleName, pythonFile));
     }
 
     @Override

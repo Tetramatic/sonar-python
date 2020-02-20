@@ -40,6 +40,7 @@ import org.sonar.plugins.python.api.tree.FileInput;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.sonar.python.PythonTestUtils.parseWithoutSymbols;
 import static org.sonar.python.PythonTestUtils.pythonFile;
+import static org.sonar.python.semantic.ProjectLevelSymbolVisitor.globalSymbols;
 import static org.sonar.python.semantic.SymbolUtils.getTypeName;
 import static org.sonar.python.semantic.SymbolUtils.getTypeSymbol;
 import static org.sonar.python.semantic.SymbolUtils.pathOf;
@@ -55,7 +56,7 @@ public class SymbolUtilsTest {
       "def fn(): pass",
       "class A: pass"
     );
-    Set<Symbol> globalSymbols = SymbolUtils.globalSymbols(tree, "mod", pythonFile("mod.py"));
+    Set<Symbol> globalSymbols = globalSymbols(tree, "mod", pythonFile("mod.py"));
     assertThat(globalSymbols).extracting(Symbol::name).containsExactlyInAnyOrder("obj1", "obj2", "fn", "A");
     assertThat(globalSymbols).extracting(Symbol::fullyQualifiedName).containsExactlyInAnyOrder("mod.obj1", "mod.obj2", "mod.fn", "mod.A");
     assertThat(globalSymbols).extracting(Symbol::usages).allSatisfy(usages -> assertThat(usages).isEmpty());
@@ -67,7 +68,7 @@ public class SymbolUtilsTest {
     FileInput tree = parseWithoutSymbols(
       "def _private_fn(): pass"
     );
-    Set<Symbol> globalSymbols = SymbolUtils.globalSymbols(tree, "mod", pythonFile("mod.py"));
+    Set<Symbol> globalSymbols = globalSymbols(tree, "mod", pythonFile("mod.py"));
     assertThat(globalSymbols).extracting(Symbol::name).containsExactlyInAnyOrder("_private_fn");
     assertThat(globalSymbols).extracting(Symbol::usages).allSatisfy(usages -> assertThat(usages).isEmpty());
   }
@@ -81,7 +82,7 @@ public class SymbolUtilsTest {
       "class A:",
       "  def meth(): pass"
     );
-    Set<Symbol> globalSymbols = SymbolUtils.globalSymbols(tree, "mod", pythonFile("mod.py"));
+    Set<Symbol> globalSymbols = globalSymbols(tree, "mod", pythonFile("mod.py"));
     assertThat(globalSymbols).extracting(Symbol::name).containsExactlyInAnyOrder("fn", "A");
     assertThat(globalSymbols).extracting(Symbol::usages).allSatisfy(usages -> assertThat(usages).isEmpty());
   }
@@ -96,7 +97,7 @@ public class SymbolUtilsTest {
       "else:",
       "  conditionally_defined = 2"
     );
-    Set<Symbol> globalSymbols = SymbolUtils.globalSymbols(tree, "mod", pythonFile("mod.py"));
+    Set<Symbol> globalSymbols = globalSymbols(tree, "mod", pythonFile("mod.py"));
     assertThat(globalSymbols).extracting(Symbol::name).containsExactlyInAnyOrder("fn", "conditionally_defined");
     assertThat(globalSymbols).extracting(Symbol::usages).allSatisfy(usages -> assertThat(usages).isEmpty());
   }
@@ -106,14 +107,14 @@ public class SymbolUtilsTest {
     FileInput tree = parseWithoutSymbols(
       "def fn(): pass"
     );
-    Set<Symbol> globalSymbols = SymbolUtils.globalSymbols(tree, "mod", pythonFile("mod.py"));
+    Set<Symbol> globalSymbols = globalSymbols(tree, "mod", pythonFile("mod.py"));
     assertThat(globalSymbols).extracting(Symbol::kind).containsExactly(Symbol.Kind.FUNCTION);
 
     tree = parseWithoutSymbols(
       "def fn(): pass",
       "fn = 42"
     );
-    globalSymbols = SymbolUtils.globalSymbols(tree, "mod", pythonFile("mod.py"));
+    globalSymbols = globalSymbols(tree, "mod", pythonFile("mod.py"));
     assertThat(globalSymbols).extracting(Symbol::kind).containsExactly(Symbol.Kind.OTHER);
   }
 
@@ -123,7 +124,7 @@ public class SymbolUtilsTest {
       "C = \"hello\"",
       "class C: ",
       "  pass");
-    Set<Symbol> globalSymbols = SymbolUtils.globalSymbols(fileInput, "mod", pythonFile("mod.py"));
+    Set<Symbol> globalSymbols = globalSymbols(fileInput, "mod", pythonFile("mod.py"));
     assertThat(globalSymbols).extracting(Symbol::name).containsExactlyInAnyOrder("C");
     assertThat(globalSymbols).extracting(Symbol::kind).allSatisfy(k -> assertThat(Symbol.Kind.CLASS.equals(k)).isFalse());
   }
@@ -135,7 +136,7 @@ public class SymbolUtilsTest {
       "class C: ",
       "  pass");
     //TODO: When global variables are present, class definitions do not have a symbol associated with them
-    Set<Symbol> globalSymbols = SymbolUtils.globalSymbols(fileInput, "mod", pythonFile("mod.py"));
+    Set<Symbol> globalSymbols = globalSymbols(fileInput, "mod", pythonFile("mod.py"));
     assertThat(globalSymbols).extracting(Symbol::name).containsExactlyInAnyOrder("C");
     assertThat(globalSymbols).extracting(Symbol::kind).allSatisfy(k -> assertThat(Symbol.Kind.CLASS.equals(k)).isTrue());
   }
@@ -145,7 +146,7 @@ public class SymbolUtilsTest {
     FileInput fileInput = parseWithoutSymbols(
       "class C: ",
       "  pass");
-    Set<Symbol> globalSymbols = SymbolUtils.globalSymbols(fileInput, "mod", pythonFile("mod.py"));
+    Set<Symbol> globalSymbols = globalSymbols(fileInput, "mod", pythonFile("mod.py"));
     assertThat(globalSymbols).hasSize(1);
     Symbol cSymbol = globalSymbols.iterator().next();
     assertThat(cSymbol.name()).isEqualTo("C");
@@ -156,7 +157,7 @@ public class SymbolUtilsTest {
       "class A: pass",
       "class C(A): ",
       "  pass");
-    globalSymbols = SymbolUtils.globalSymbols(fileInput, "mod", pythonFile("mod.py"));
+    globalSymbols = globalSymbols(fileInput, "mod", pythonFile("mod.py"));
     Map<String, Symbol> symbols = globalSymbols.stream().collect(Collectors.toMap(Symbol::name, Functions.identity()));
     cSymbol = symbols.get("C");
     assertThat(cSymbol.name()).isEqualTo("C");
@@ -169,7 +170,7 @@ public class SymbolUtilsTest {
       "  class A1: pass",
       "class C(A.A1): ",
       "  pass");
-    globalSymbols = SymbolUtils.globalSymbols(fileInput, "mod", pythonFile("mod.py"));
+    globalSymbols = globalSymbols(fileInput, "mod", pythonFile("mod.py"));
     symbols = globalSymbols.stream().collect(Collectors.toMap(Symbol::name, Functions.identity()));
     cSymbol = symbols.get("C");
     assertThat(cSymbol.name()).isEqualTo("C");
@@ -184,7 +185,7 @@ public class SymbolUtilsTest {
       "class C(A): ",
       "  pass");
 
-    Set<Symbol> globalSymbols = SymbolUtils.globalSymbols(fileInput, "mod", pythonFile("mod.py"));
+    Set<Symbol> globalSymbols = globalSymbols(fileInput, "mod", pythonFile("mod.py"));
     Map<String, Symbol> symbols = globalSymbols.stream().collect(Collectors.toMap(Symbol::name, Functions.identity()));
     Symbol cSymbol = symbols.get("C");
     assertThat(cSymbol.name()).isEqualTo("C");
