@@ -23,12 +23,17 @@ import org.sonar.api.Plugin;
 import org.sonar.api.PropertyType;
 import org.sonar.api.SonarProduct;
 import org.sonar.api.SonarRuntime;
+
+import com.google.common.collect.ImmutableList;
+
 import org.sonar.api.config.PropertyDefinition;
 import org.sonar.api.resources.Qualifiers;
 import org.sonar.api.utils.Version;
 import org.sonar.plugins.python.bandit.BanditRulesDefinition;
 import org.sonar.plugins.python.bandit.BanditSensor;
 import org.sonar.plugins.python.coverage.PythonCoverageSensor;
+import org.sonar.plugins.python.flake8.Flake8RuleRepository;
+import org.sonar.plugins.python.flake8.Flake8ImportSensor;
 import org.sonar.plugins.python.pylint.PylintConfiguration;
 import org.sonar.plugins.python.pylint.PylintImportSensor;
 import org.sonar.plugins.python.pylint.PylintRuleRepository;
@@ -45,6 +50,7 @@ public class PythonPlugin implements Plugin {
   private static final String TEST_AND_COVERAGE = "Tests and Coverage";
   private static final String EXTERNAL_ANALYZERS_CATEGORY = "External Analyzers";
   private static final String PYLINT = "Pylint";
+  private static final String FLAKE8 = "Flake8";
   private static final String DEPRECATED_PREFIX = "DEPRECATED : Use " + PythonCoverageSensor.REPORT_PATHS_KEY + " instead. ";
 
   public static final String FILE_SUFFIXES_KEY = "sonar.python.file.suffixes";
@@ -79,6 +85,7 @@ public class PythonPlugin implements Plugin {
       addXUnitExtensions(context);
       addPylintExtensions(context);
       addBanditExtensions(context);
+      addFlake8Extensions(context);
     }
   }
 
@@ -183,6 +190,21 @@ public class PythonPlugin implements Plugin {
           .build(),
         BanditRulesDefinition.class);
     }
+  }
+
+  private static void addFlake8Extensions(Context context) {
+    context.addExtensions(
+      PropertyDefinition.builder(Flake8ImportSensor.REPORT_PATH_KEY)
+        .index(42)
+        .name("Flake8 reports")
+        .description("Path to Flake8 report file, relative to projects root")
+        .category(PYTHON_CATEGORY)
+        .subCategory(FLAKE8)
+        .onQualifiers(Qualifiers.PROJECT)
+        .defaultValue("")
+        .build(),
+      Flake8ImportSensor.class,
+      Flake8RuleRepository.class);
   }
 
 }
